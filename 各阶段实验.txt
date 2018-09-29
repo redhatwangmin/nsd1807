@@ -1,0 +1,659 @@
+squid:
+配置文件/etc/squid/squid.conf
+http_port 80 vhost（修改端口，别人进来的端口）
+visible_hostname svr5.example.com（自己添加，对外显示的地址信息）
+cache_peer 192.168.2.100 parent 80 0 originserver   （自己添加，找谁要网页内容）
+cache_dir ufs /var/spool/squid 200 16 128（缓存网页作用，200是可以存储的内存大小，16是一级文件，128是二级文件。）
+http_access allow all（允许所有）
+重起squid服务，设置成开机自起。
+查看日志：
+ls /var/spool/squid
+tail /var/log/squid/accesss.log
+####################################################
+varnish:
+/etc/sysconfig/varnish前端配置
+VARNISH_LISTEN_PORT=80（端口）
+VARNISH_STORAGE_SIZE=64M （缓存大小）
+VARNISH_STORAGE="malloc,${VARNISH_STORAGE_SIZE}" (使用内存缓存)
+
+/etc/varnish/default.vcl后段配置
+backend default {
+   .host = "192.168.2.100";(源站点IP)
+   .port = "80";（端口号）
+ }
+/etc/init.d/varnish start（启动）
+varnishlog(软件本身日志，在内存里面)
+varnishncsa（访问日志，没人访问则没有日志，同上）
+手动清理缓存，在代理服务器上清理
+varnishadm -S /etc/varnish/secret -T 127.0.0.1:6082 
+/etc/varnish/secret（密码存放文件）
+127.0.0.1（本机）
+6082（仅管理员使用的端口）
+storage.list
+backend.list
+ban.url   （清理谁页面文件,【支持正则】！！）(清除缓存)
+ban.url 2.html(2.html是源站点/var/www/html/下的网站内容)
+#######################################################
+nginx:
+nginx.org    nginx官网
+。/config --help | grep '/--with-'(帮助)
+。/config --with-。。。。。（加）
+。/config --without-。。。（停）
+nginx    启动
+nginx -V（大V）   查看编译参数
+nginx -v         查看版本号
+nginx -t         检测语法是否正确
+nginx -c
+nginx -s stop
+nginx -s reload  不重起，加载配置文件。（保证在开启状态下）
+安装nginx
+1、cd /root/lnmp_soft
+2、执行install_lnmp.sh脚本，选择安装nginx 
+3、cd /root/lnmp_soft/nginx-1.8.0
+4、./configure --with-http_ssl_module  
+5、make  
+
+用户认证：
+server {
+        listen       80;
+        server_name  localhost;
+		auth_basic "Input Password:";    ##手动添加
+		auth_basic_user_file "/usr/local/nginx/pass";  #手动添加
+	创建密码文件：
+	htpasswd -cm /usr/local/nginx/pass   tom
+		输入密码：123
+		输入密码：123
+/usr/local/nginx/sbin/nginx –s reload  
+ 请先确保nginx是启动状态才可以执行命令成功，否则报错
++++++++++++++++++++++++++++
+虚拟主机：（/etc/hossts加DNS缓存，注意括号）
+server {
+        listen       80;
+        server_name  www.b.com;
+
+ location / {
+            root   b;
+            index  index.html index.htm;
+        }
+}
+|++++++++++++++++++++++++++++++++++=
+安全的nginx：
+搜索443，打开注释更改域名项即可。
+cd /usr/local/nginx/conf
+openssl genrsa -out cert.key          
+openssl req -new -x509 -key cert.key -out cert.pem 
+vim  /usr/local/nginx/conf/nginx.conf
+	server {
+    	    listen       443 ssl;
+     	   server_name  www.cc.com;
+      	  ssl_certificate      cert.pem;公钥或者称为证书
+       	 ssl_certificate_key  cert.key;   #私钥
+cd /usr/local/nginx
+mkdir cc
+echo cc > cc/index.html
+添加DNS缓存到/etc/hosts
+nginx -s reload
+firefox https://www.cc.com
++++++++++++++++++++++++++++++++++++++++++++++
+nginx反向代理：
+ip_hash; #相同的ip访问相同的服务器（随即），坏了后会再次随机，好了后会在回来。
+max_fails #失败次数
+fial_timeout #超时时间
+donw  ##坏了后不再找你
+加到配置文件server上面，
+pstream XXX {           #定义后段web主机为XXX
+		ip_hash;
+        server 192.168.4.51:80 max_fails=1 fail_timeout=30;
+							  失败次数              失败后多长时间内不找你
+        server 192.168.4.52:80 weight=2; #weight权重
+}
+
+  location / {
+            proxy_pass http://XXX;    #调用XXX
+            root   html;
+            index  index.html index.htm;
+        }
+++++++++++++++++++++++++++++++++++++++++++
+nginx升级：
+
+
+
+
+
+
++++++++++++++++++++++++++++++++++++++++++++++
+地址重写：
+##redirect地址栏跟着变化，不加地址栏则不变
+##支持正则 rewrite /.html$ /123/b.html;
+##rewrite ^/(.*) http://www.tmooc.cn/$1;
+	 #加到location行上面,$1相当于\1 #复制，粘贴
+地址重写选项：
+ last   ##匹配即停止，只可以用于rewrite与rewrite之间
+  break  ##终止匹配，
+redirect  ##临时重定向
+permament  ##永久重定向
+
+
+ location / {
+            root   html;
+            index  index.html index.htm;
+        rewrite /a.html /b.html redirect;   #自己加 ，访问a跳到b
+        }
+
+localtion下面添加：
+不同浏览器访问的页面风格不同elinks、curl
+echo AAA > /usr/local/nginx/html/index.html 
+echo BBB > /usr/local/nginx/html/curl/index.html
+
+if ($http_user_agent ~* curl){
+     rewrite ^/(.*)  /curl/$1;
+	}
+
+server下面去掉注释改为utf-8，支持汉字：
+charset utf-8;
+
+curl -A "IE280" http://127.0.0.1/test.html   #伪装浏览器版本
++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+nginx优化：
+lscpu查看cpu
+top命令：
+	大P 进行排序
+
+压力测试：
+which ab
+	/bin/ab
+rpm -qf bin/ab
+	XXXXXX
+yum -y install XXXX
+客户机同时可以访问多少文件：
+ulimit -Hn 100000
+ulimit -Sn 100000
+测试
+ab -n 2000 -c 2000 http://XXXXX/
+++++++++++++++++++++++++++++++++++ 
+并发调优：
+vim /usr/local/nginx/conf/nginx.conf
+worker_connections  65536;  #调整参数
+
+vim /etc/security/limits.conf ##重起生效
+ulimit -Hn 100000  
+ulimit -Sn 100000
+
+命令行在执行一遍：
+ulimit -Hn 100000  
+ulimit -Sn 100000
+ ++++++++++++++++++++
+隐藏web服务器版本号:nginx只能隐藏版本号，服务器名字待查
+#tcp_nodelay on;    #关闭tcp缓延迟发送时间，找到文件不先存到内存，而是直接给用户
+#sendfile on;  #提升nginx读文件性能
+##keepalive_timeout 10;   #保持链接的超时时间，在10秒内没有任何操作不断开连接
+vim /usr/local/nginx/conf/nginx.cong
+
+ http {
+        server_tokens off; ##自己加
+    include       mime.types;
+    default_type  application/octet-stream;
+
+nginx -s reload
++++++++++++++++++++++++
+URL长度：设置大小
+vim /usr/locla/nginx/conf/nginx.conf
+http {
+        client_header_buffer_size 1m;    #自己加，请求包头信息的缓存大小
+        large_client_header_buffers 4 4k;  #自己加，大于1m后生成的包头缓存大小
++++++++++++++++++++++++++++
+浏览器地址栏输入about.cache查看具体缓存信息
+
+访问以jpg等结尾的图片缓存30天：#加到location下面的花括号外面
+location ~* \.{jpg|jpeg|gif|png|css|js|xml}${
+expires 30d;
+}
++++++++++++++++++++++++++++++++++++++++++++++
+盗取连接
+vim /usr/local/nginx/html/index.html #原始网页配置文件
+<hr />
+<img src=" 复制图片地址" />
+####################################################
+#####################################################
+tomcat：java所写
+url=协议+主机+端口号+路径
+解压缩，移动，安装完成
+ tar -xf apache-tomcat-8.0.30.tar.gz 
+mv apache-tomcat-8.0.30 /usr/local/tomcat
+启动：
+/usr/local/tomcat/bin/startup.sh 
+
+firefox http://127.0.0.1:8080
+测试页面：
+cd /usr/local/tomcat/webapps/ROOT
+vim test.jsp
+	<html>
+	<head>
+	<title>my jsp web page</title>
+	<body>
+	Now: <%=new java.util.Date()%>  ##服务器当前时间
+	</body>
+	</html>
+测试：
+firefox http://127.0.0.1:8080/test.jsp
+++++++++++++++++++++++++++++++++++++++++
+tocat：
+bin：主程序文件
+lib：库文件目录
+logs：日志目录
+temp：临时目录
+work：自动便以目录jsp代码转化servlet
+conf：配置文件目录
+webapps：页面目录
+server.xml #主配置文件
+context.xml #定义会话管理器、JDBC
+tomcat-users.xml #用户认证的帐号和密码配置文件
+++++++++++++++++++++++++++++++++++++++++
+虚拟主机：
+一个host一个页面：
+vim /usr/local/tomcat/conf/server.xml
+  <Host name="www.aaa.com"  appBase="aaa"
+            unpackWARs="true" autoDeploy="true">
+        </Host>
+      <Host name="www.bbb.com"  appBase="bbb"
+            unpackWARs="true" autoDeploy="true">
+        </Host>
+cd /usr/local/tomcat
+mkdir -p {aaa,bbb}/ROOT
+echo AAA > aaa/ROOT/index.html
+echo BBB > bbb/ROOT/index.html
+编辑/etc/hosts
+/usr/locla/tomcat/bin/shutdown.sh
+/usr/local/tomcat/bin/start.sh
+测试：
+firefox  http://www.aaa.com:8080
+firefox http://www.bbb.com:8080
++++++++++++++
+tomcat自定义网页目录：
+bath当用户找网页根目录/XXX时，调转到docBase=“XXXXX”。
+vim /usr/local/tomcat/conf/server/xml
+<Host name="www.aaa.com"  appBase="aaa"
+            unpackWARs="true" autoDeploy="true">
+<Context path="" docBase="123" reloadable="trun" /> #网页目录
+        </Host>
+++++++++++++++++++++++++++++++
+加密tomcat：
+生成密钥并设置密钥保护密码
+keytool -genkeypair -alias tomcat -keyalg RSA -keystore /usr/local/tomcat/keystore
+
+
+ <Connector port="8443" protocol="org.apache.coyote.http11.Http11NioProtocol"
+               maxThreads="150" SSLEnabled="true" scheme="https" secure="true"
+                keystoreFile="/usr/local/tomcat/keystore" keystorePass="123456"    #自己添加，制定密钥位置，保护密钥的密码
+               clientAuth="false" sslProtocol="TLS" />
+
+重起：
+/usr/local/tomcat/bin/shutdown.sh
+/usr/local/tomcat/bin/start.sh
+firefox https://127.0.0.1:8443
++++++++++++++++++++++++++++++++++++++++
+独立日志日志：
+vim /usr/local/tomcat/conf.server.conf
+ 	<Host name="www.aaa.com"  appBase="aaa"
+            unpackWARs="true" autoDeploy="true">
+
+        <Valve className="org.apache.catalina.valves.AccessLogValve"   #独立日志，手动添加
+                prefix="wwwaaacom_access_log." suffix=".txt"           #独立日志，手动添加
+   				pattern="%h %l %u %t &quot;%r&quot; %s %b" />        #独立日志，手动添加
+
+        </Host>
++++++++++++++++++++++++++++++++++++++
+并发量优化：
+vim /usr/locla/tomcat/bin/catalina.sh
+<Connector port="8080"
+	protecol="HTTP/1.1"
+	maxThreads="1000"    ##客户请求最大线程数
+	minSpareThreads="100"
+	maxSpareThreads="1000"//
+	enableLookups="false"
+	URIEncoding="utf-8"
+	acceptCount="1000"   ##监听段阔列队最大数，每个端口最大派对人数
+/>
+#####################################################
+######################################################
+memcache:端口11211, talnet端口23
+装包：
+yum -y install memcached
+systemctl restall memcached
+yum -y install telnet
+连接memcache缓存数据库：
+telnet 127.0.0.1 11211
+
+set name 0 180 3   ##不可以修改变量的值
+#设置变量名为name，0表示不压缩，180表示name变量的婚存时间是180秒，3指的是name变量
+占用3字节空间。
+ 
+get name #查看name的值
+
+add myname 0 180 3 #定义变量myname的值
+	hello
+set myname 0 180 5 #set修改add添加的变量
+	helloa
+replace myname 0 180 10        //替换，如果myname不存在则报错
+get myname                    //读取变量
+append myname 0 180 10        //向变量中追加数据
+delete myname                    //删除变量
+stats                        //查看状态
+flush_all                        //清空所有
+quit                            //退出登录                                  
++++++++++++++++++++++++++++++++++++++++++++++
+php+memcache架构：
+在memecache服务器上安装LNMP架构：
+yum -y install gcc gcc-c++  pcre-devel openssl-devel zlib-devel
+useradd -s /sbin/nologin nginx
+tar -zxf nginx-1.8.0.tar.gz
+cd nginx-1.8.0/
+./configure --prefix=/usr/local/nginx --user==nginx --group==nginx --with-http_ssl_module
+make $$ make install
+安装mariadb
+yum -y install mariadb-server mariadb-devel
+安装php：
+yum -y install mariadb-server mariadb-devel
+yum -y install php php-mysql php-fpm-5.4.16-36.el7_1.x86_64.rpm
+为php添加memcache扩展：
+yum -y install php-pecl-memcache
+
+vim /usr/local/nginx/conf/nginx.conf
+location / {
+            root   html;
+            index  index.php index.html index.htm; #添加index.php
+        } 									#支持php网页
+打开注释并修改#fastcgi_param 这一项
+location ~ \.php$ {
+            root           html;
+            fastcgi_pass   127.0.0.1:9000;
+            fastcgi_index  index.php;
+            #fastcgi_param  SCRIPT_FILENAME  /scripts$fastcgi_script_name;
+            include        fastcgi.conf;  ##注意修改后缀
+        }
+
+cd /root/lnmp_soft/php_scripts/
+cp -rp mem.php /usr/local/nginx/html/
+nginx -t  ##检查语法
+启动相关服务：
+/usr/local/nginx/sbin/nginx
+systemctl restart mariadb.service
+systemctl start php-fpm
+systemctl restart memcached
+测试：
+curl http://XXXXXX/mem.php
++++++++++++++++++++++++++++++++++
+session & Cookies
+session（会话）:存储在服务器端，保留用户名、密码等信息
+     例如：登录京东后在访问京东的其他页面不会在进行重新登录，
+Cookies：由服务器缓存在本地的文件，主要存储sessionID、帐号、过期时间等
+    例如：登录网站后保存帐号，密码后，下次在访问就不需要再次登录。
+ 
+闪闪闪：变换网页，session值不变。
+nginx作为调度器、两台tomcat作为后端web服务器
+实现session共享需要在web服务器上使用第三方工具msm（memcache-session-manager）
+
+架构：
+nginx调度器+tomcat+tomcat
+停防火墙、禁用selinux
+nginx调度后端量太tomcatWEB服务器，
+
+后端web1:
+1、安装tomcat
+	创建网页内容
+	vim webapps/ROOT/test.jsp 
+		<html>
+			<body bgcolor="yellow">   #另一台WEB服务器集的改颜色
+			    <center>
+			    <%String s = session.getId();%>   #获取sessionID
+			      <%=s%>
+			    <h1>tomcatA</h1>    #网页显示内容
+			    </center>
+			</body>
+		</html>
+   1.1、并拷贝到另一台tomcat服务器的网页目录下
+2、安装memcached
+cd /root/lnmp_soft/
+cp -rp *.jar /usr/local/tomcat/lib/
+vim conf/context.xml
+		###36行加入
+	<Manager className="de.javakaffee.web.msm.MemcachedBackupSessionManager"
+   	     memcachedNodes="mem1:192.168.4.2:11211"   ##改为自己的IP地址，两个后端WEB服务器都指向同一个WEB服务器
+    	requestUriIgnorePattern=".*\.(ico|png|gif|jpg|css|js)$"
+    	transcoderFactoryClass="de.javakaffee.web.msm.JavaSerializationTranscoderFactory"/>
+
+ bin/shutdown.sh
+bin/startup.sh 
+同步两个文件到另一台tomcatWEB服务器
+scp -r /usr/local/tomcat/lib 192.168.4.3:/usr/local/tomcat/lib
+scp -r /usr/local/tomcat/conf/context.xml 192.168.4.3:/usr/local/tomcat/conf/
+WEB服务器：
+重起服务
+##################################################
+Redis（REmote Dictionary Server缓存数据库）:支持硬盘写入，把缓存内的数据周期性的写入到硬盘，断电等情况下不会丢失数据。
+结构化数据库，关系形数据库（mysql、sqlserver等）
+memcache、Redis非关系形数据库
+
+tui: text user interface 文本用户界面
+gui: graphical uesr interface 图形用户界面
+cli: command line interface 命令行接口
+
+一、安装
+cd /root/lnmp_soft/
+yum -y install gcc  gcc-c++
+make
+make install
+二、初始化
+./utils/install_server.sh 初始化，全部回车选择默认。
+最后输出信息：
+Please select the redis executable path [/usr/local/bin/redis-server] 
+Selected config:
+Port           : 6379
+Config file    : /etc/redis/6379.conf
+Log file       : /var/log/redis_6379.log
+Data dir       : /var/lib/redis/6379
+Executable     : /usr/local/bin/redis-server
+Cli Executable : /usr/local/bin/redis-cli
+三、启动服务(和7版本有一定的出入)
+service redis_6379 status     ##查看状态
+service redis_6379 stop       ##停止服务
+service redis_6379 start      ##启动服务
+systemctl status redis   ##用七版本的查看方式不合适，状态是错误的
+netstat -antpul | grep 6379   #查看端口号已经启动，版本问题，实际上已经启动了。
+四、测试
+redis-cli         #进入
+set name azj      #定义变量
+get name          #查看变量
+set counter 10    #定义数字
+INCR counter      #自增长
+get counter       #查看
+
+五、字符串操作
+set first 'hello world'     #定义变量
+get first				  #查看变量
+SETRANGE first 6 'tedu.cn'  #修改变量，从第六个字符除换为tedu.cn
+get first 				  #查看修改后的变量内容
+
+APPEND 没有则创建，有则追加
+APPEND file '123'
+get file
+APPEND file '456'
+get file
+
+SETBIT  添加、统计
+SETBIT peter 100 1     #定义二进制的第100位为1	
+SETBIT peter 105 1	  #定义二进制的第105位为1
+SETBITCOUNT peter	  #查看peter1共出现了几次
+#例如需要统计一个用户在一个网站上一年当中登录了几次，只需要在每次登录的时候在对应的天数或者说位数上填入1最后统计就可以得到登录的次数。
+
+set an 100   #定义变量
+INCR an		#自增长
+DECR an		#自减少
+DECRBY an 10 #减少固定的值
+INCRBY an 20 #增加固定的值
+
+GETRANGE  取字符串
+set aaa "hello world"
+GETRANGE aaa 0 4    #取出第0为到第四为，redids计数是从0位 开始
+GETRANGE aaa 7 -1   #取出第7位到最后一位
+GETRANGE aaa 6 -1   #取出第6位到最后一位
+
+INCRBYFLOAT   #浮点数加法，
+set bbb 10.1
+INCRBYFLOAT bbb 2.5    #加
+INCRBYFLOAT bbb -2.5	  #减
+
+MSET一次定义多个值：
+MSET aaa 10 bbb "abc"
+
+MGET一次查看多个值：
+MGET aaa bbb
+++++++++++
+hash表类型数据：
+一个key里面可以定义多个values，每个value对应一个数据。
+调用的时候，调用key里的某个value就可以得到相对应的数据。
+hset site google "www.google"     #定义
+hset site baidu "www.baidu.com"	#定义
+HGET site baidu					#调用
+HGET site google					#调用
+
+HMSET site2 tedu "www.tedu.cn" sina "www.sina.cn"   #定义多个值
+HmGET site2 tedu sina                               #调用多个值 
+HKEYS site   #查看site这个key里的所有value
+HVALS site   #查看site这个key里的左右数据
+HGETALL site #查看site这个key里的所有value和数据
+HDEL site google  #删除site这个key中的google这个value
+++++++++++
+list列表
+redis的list是一个字符队列
+help @《tab键》   #帮助信息
+LPUSH mylist lisi zhangsan xiaoming    #定义多个value
+LRANGE mylist 0 -1					#列出所有value，倒序
+LPUSH mylist xiaohong					#从后面增加一个value
+LRANGE mylist 0 -1					#查看所有value，倒序
+RPUSH mylist 222						#从开头增加一个value
+LSET mylist 2 ll						#修改mylist 第三个value
++++++++++++++++++++++
+redis（主从，读写分离）：
+配置文件解析：
+/etc/redis/6379.conf
+maxmemory<mytes>  //最大内存
+maxmemory-policy volatile-lru //内存满时，使用LRU算法清理旧数据，清理内存数据，硬盘里面的数据不变
+daemonize yes    //守护进程
+pidfile /var/run/redis_6379.pid  //进程ID号
+port 6379   //端口号
+timeout 300  //连接超时时间
+loglevel notice  //日志级别，notice级别的日志进行记录
+logfile /var/log/redis_6379.log   //日志文件
+
+/etc/redis/63793.conf
+ databases16 //数据库的个数，默认是16个，写入数据时默认是往0库中写入。
+  save 900 1 //900秒内有1个key发生变化则进行景象备份
+   save 300 10 //同上
+	save 60 100000  //同上，时间短修改次数多则备份频率高
+dbfilename dump.rdb  //镜像备份文件名
+/var/lib/redis/6379   //备份文件路径
+++++++++++++++++
+redis主从同步
+
+一、安装
+主从两端都安装redis：
+安装gcc、gcc-c++
+1、解包（lnmp里面的redis）
+2、make && make intall
+3、./utils/install_server.sh  #初始化
+4、service redis_6379 start  #启动
+
+二、修改主服务器设置同步密码
+主master：
+vim /etc/redis/6379.conf
+#397行  requirepass redis123
+
+修改启动脚本：
+ vim /etc/init.d/redis_6379 
+#43行   添加  -a 密码 
+ $CLIEXEC -a redis123 -p $REDISPORT shutdown
+
+重起服务：
+/etc/init.d/redis_6379 restart
+
+三、配置从服务器
+1、vim /etc/redis/6379.conf 
+#212行，手动添加
+slaveof 192.168.4.2 6379  #主服务器IP地址、端口
+#219行，手动添加
+masterauth redis123  #主服务器的密码
+
+四、测试：
+主登录 redis-cli -h 自己的IP地址   -a 密码
+从登录 redis-cli
+主写入，从测试（注意是否在同一个库）
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
